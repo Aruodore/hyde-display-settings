@@ -134,10 +134,33 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         row.set_title(title)
         row.set_subtitle(subtitle)
         row.set_value(minutes)
+        self._repair_spinrow_symbols(row, title)
         switch = Gtk.Switch(active=enabled, valign=Gtk.Align.CENTER)
         switch.set_tooltip_text(f"Enable {title.lower()}")
         row.add_prefix(switch)
         return switch, row
+
+    @staticmethod
+    def _repair_spinrow_symbols(row: Adw.SpinRow, title: str) -> None:
+        child = row.get_first_child()
+        pending: list[Gtk.Widget] = []
+        while child is not None:
+            pending.append(child)
+            child = child.get_next_sibling()
+        while pending:
+            widget = pending.pop()
+            child = widget.get_first_child()
+            while child is not None:
+                pending.append(child)
+                child = child.get_next_sibling()
+            if not isinstance(widget, Gtk.Button):
+                continue
+            if widget.has_css_class("down"):
+                widget.set_child(Gtk.Label(label="−"))
+                widget.set_tooltip_text(f"Reduce {title.lower()} time")
+            elif widget.has_css_class("up"):
+                widget.set_child(Gtk.Label(label="+"))
+                widget.set_tooltip_text(f"Increase {title.lower()} time")
 
     def _screen_time_page(self) -> Adw.PreferencesPage:
         page = Adw.PreferencesPage()
