@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hyde-display-settings"
+version = "0.1.0"
+description = "Native display, idle, night-light, and screen-time settings for HyDE and Hyprland"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+keywords = ["hyde", "hyprland", "waybar", "gtk", "display-settings"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: X11 Applications :: GTK",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Desktop Environment",
+]
+
+[tool.setuptools]
+py-modules = []

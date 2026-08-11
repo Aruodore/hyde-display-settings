@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Display Settings
+Comment=Manage Hyprland displays, idle actions, night light, and screen time
+Exec=hyde-display-settings
+Icon=video-display
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;
+Keywords=display;monitor;brightness;night light;idle;screen time;Hyprland;HyDE;
+StartupNotify=true
+StartupWMClass=io.github.hyde.DisplaySettings

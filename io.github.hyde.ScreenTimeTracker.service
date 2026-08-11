@@ -1,0 +1,14 @@
+[Unit]
+Description=Local screen-time tracker for HyDE Display Settings
+Documentation=https://github.com/hyde-project/hyde
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/lib/hyde-display-settings/hyde-screen-time-tracker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
