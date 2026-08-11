@@ -157,10 +157,13 @@ def run_quiet(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def restart_process(name: str, command: list[str]) -> None:
-    service = run_quiet("systemctl", "--user", "try-restart", f"{name}.service")
+    # HyDE normally launches these helpers directly rather than through their
+    # optional systemd units. Stop that unmanaged process before asking
+    # systemd to start a fresh instance with the newly written configuration.
+    run_quiet("pkill", "-x", name)
+    service = run_quiet("systemctl", "--user", "restart", f"{name}.service")
     if service.returncode == 0:
         return
-    run_quiet("pkill", "-x", name)
     if shutil.which(command[0]) and shutil.which("hyprctl"):
         run_quiet("hyprctl", "dispatch", "exec", " ".join(command))
 

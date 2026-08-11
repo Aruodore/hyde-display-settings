@@ -60,11 +60,11 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
         header.set_title_widget(switcher)
 
-        apply_button = Gtk.Button(label="Apply")
-        apply_button.add_css_class("suggested-action")
-        apply_button.set_tooltip_text("Save idle and night-light settings")
-        apply_button.connect("clicked", self._apply)
-        header.pack_end(apply_button)
+        self.apply_button = Gtk.Button(label="Save & Apply")
+        self.apply_button.add_css_class("suggested-action")
+        self.apply_button.set_tooltip_text("Save settings and reload the idle and night-light services")
+        self.apply_button.connect("clicked", self._apply)
+        header.pack_end(self.apply_button)
 
         toolbar.add_top_bar(header)
         toolbar.set_content(self.stack)
@@ -123,12 +123,12 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
         intro = Adw.PreferencesGroup(
             title="When inactive",
-            description="Each action uses time since your last keyboard or pointer input.",
+            description="Choose times, then use Save and Apply. Closing without applying discards these changes.",
         )
         self.dim_switch, self.dim_row = self._timeout_row("Dim display", "Lower brightness without locking", self.settings.dim_enabled, self.settings.dim_minutes)
         self.lock_switch, self.lock_row = self._timeout_row("Lock screen", "Require your password to return", self.settings.lock_enabled, self.settings.lock_minutes)
-        self.off_switch, self.off_row = self._timeout_row("Turn display off", "Power down connected displays", self.settings.display_off_enabled, self.settings.display_off_minutes)
-        self.suspend_switch, self.suspend_row = self._timeout_row("Suspend computer", "Save power and pause the session", self.settings.suspend_enabled, self.settings.suspend_minutes)
+        self.off_switch, self.off_row = self._timeout_row("Turn display off", "Blank displays while apps and background work keep running", self.settings.display_off_enabled, self.settings.display_off_minutes)
+        self.suspend_switch, self.suspend_row = self._timeout_row("Suspend computer", "Pause the computer and its running processes", self.settings.suspend_enabled, self.settings.suspend_minutes)
         for row in (self.dim_row, self.lock_row, self.off_row, self.suspend_row):
             intro.add(row)
         page.add(intro)
@@ -147,6 +147,7 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         row = Adw.SpinRow.new_with_range(1, 240, 1)
         row.set_title(title)
         row.set_subtitle(subtitle)
+        row.add_css_class("idle-timeout")
         row.set_value(minutes)
         switch = Gtk.Switch(active=enabled, valign=Gtk.Align.CENTER)
         switch.set_tooltip_text(f"Enable {title.lower()}")

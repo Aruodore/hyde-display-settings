@@ -18,6 +18,10 @@ class AppStyleTests(unittest.TestCase):
         self.assertIn(".display-tabs button:checked label", APP_CSS)
         self.assertIn(".display-tabs button:checked image", APP_CSS)
 
+    def test_idle_stepper_icons_have_explicit_theme_foreground(self) -> None:
+        self.assertIn(".idle-timeout button image", APP_CSS)
+        self.assertIn("color: @window_fg_color", APP_CSS)
+
 
 if __name__ == "__main__":
     unittest.main()

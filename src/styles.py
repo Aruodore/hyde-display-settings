@@ -8,4 +8,9 @@ APP_CSS = """
 .display-tabs button:checked image {
     color: @accent_fg_color;
 }
+
+.idle-timeout button image {
+    color: @window_fg_color;
+    opacity: 1;
+}
 """

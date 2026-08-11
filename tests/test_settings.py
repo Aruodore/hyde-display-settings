@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 import sys
@@ -15,6 +16,36 @@ class SettingsTests(unittest.TestCase):
     def test_tracking_is_opt_in(self) -> None:
         self.assertFalse(settings.Settings().tracking_enabled)
 
+    @patch("settings.run_quiet")
+    def test_restart_replaces_unmanaged_hyde_process(self, run_quiet) -> None:
+        run_quiet.return_value = subprocess.CompletedProcess([], 0, "", "")
+
+        settings.restart_process("hypridle", ["hypridle"])
+
+        self.assertEqual(
+            [call.args for call in run_quiet.call_args_list],
+            [
+                ("pkill", "-x", "hypridle"),
+                ("systemctl", "--user", "restart", "hypridle.service"),
+            ],
+        )
+
+    @patch("settings.shutil.which", return_value="/usr/bin/tool")
+    @patch("settings.run_quiet")
+    def test_restart_falls_back_to_hyprland_when_systemd_fails(self, run_quiet, _which) -> None:
+        run_quiet.side_effect = [
+            subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 1, "", "failed"),
+            subprocess.CompletedProcess([], 0, "", ""),
+        ]
+
+        settings.restart_process("hypridle", ["hypridle"])
+
+        self.assertEqual(
+            run_quiet.call_args_list[-1].args,
+            ("hyprctl", "dispatch", "exec", "hypridle"),
+        )
+
     def test_idle_config_contains_default_sequence(self) -> None:
         config = settings.idle_config(settings.Settings())
         positions = [config.index(f"timeout = {minutes * 60}") for minutes in (9, 10, 15, 20)]
@@ -23,6 +54,11 @@ class SettingsTests(unittest.TestCase):
     def test_disabled_idle_action_is_omitted(self) -> None:
         value = settings.Settings(dim_enabled=False)
         self.assertNotIn("brightnessctl", settings.idle_config(value))
+
+    def test_disabled_suspend_keeps_background_work_running(self) -> None:
+        value = settings.Settings(suspend_enabled=False)
+        self.assertNotIn("systemctl suspend", settings.idle_config(value))
+        self.assertIn("hyprctl dispatch dpms off", settings.idle_config(value))
 
     def test_night_light_schedule(self) -> None:
         value = settings.Settings(night_light_enabled=True, night_temperature=3900, night_start="20:30", night_end="06:15")
