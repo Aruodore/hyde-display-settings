@@ -1,0 +1,10 @@
+{
+  "custom/display-settings": {
+    "exec": "hyde-display-settings-waybar",
+    "return-type": "json",
+    "format": "{text}",
+    "interval": 60,
+    "tooltip": true,
+    "on-click": "hyde-display-settings"
+  }
+}

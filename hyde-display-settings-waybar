@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ ! -f "$APP_DIR/src/app.py" ]; then
+if [ ! -f "$APP_DIR/src/waybar.py" ]; then
     APP_DIR=${HYDE_DISPLAY_SETTINGS_HOME:-"$HOME/.local/lib/hyde-display-settings"}
 fi
-exec python "$APP_DIR/src/app.py" "$@"
+exec python "$APP_DIR/src/waybar.py" "$@"

@@ -1,6 +1,5 @@
 [Unit]
 Description=Local screen-time tracker for HyDE Display Settings
-Documentation=https://github.com/hyde-project/hyde
 After=graphical-session.target
 PartOf=graphical-session.target
 
