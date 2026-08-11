@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-APP_ID = "io.github.hyde.DisplaySettings"
+APP_ID = "io.github.coding_this.HyDEDisplaySettings"
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "hyde-display-settings"
 APP_CONFIG = CONFIG_DIR / "hyde-display-settings/settings.json"
@@ -32,7 +32,7 @@ class Settings:
     night_temperature: int = 4500
     night_start: str = "21:00"
     night_end: str = "06:00"
-    tracking_enabled: bool = True
+    tracking_enabled: bool = False
 
     @classmethod
     def load(cls) -> "Settings":
@@ -56,13 +56,14 @@ class Settings:
 
     def save(self) -> None:
         APP_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        APP_CONFIG.parent.chmod(0o700)
         atomic_write(APP_CONFIG, json.dumps(asdict(self), indent=2) + "\n")
 
 
 def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         backup = path.with_name(f"{path.name}.backup-{stamp}")
         shutil.copy2(path, backup)
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
@@ -76,7 +77,7 @@ def atomic_write(path: Path, content: str) -> None:
         raise
 
 
-def idle_config(settings: Settings) -> str:
+def idle_listeners(settings: Settings) -> str:
     blocks: list[str] = []
     if settings.dim_enabled:
         blocks.append(f"""listener {{
@@ -101,26 +102,45 @@ def idle_config(settings: Settings) -> str:
     on-timeout = systemctl suspend
 }}""")
     listeners = "\n\n".join(blocks)
-    return f"""# Managed by HyDE Display Settings.
-# Previous versions are saved beside this file before each change.
-$LOCKSCREEN = pidof hyprlock || hyprlock
+    return listeners
 
-general {{
+
+IDLE_START = "# BEGIN HYDE DISPLAY SETTINGS"
+IDLE_END = "# END HYDE DISPLAY SETTINGS"
+
+
+def replace_managed_block(existing: str, body: str, start: str = IDLE_START, end: str = IDLE_END) -> str:
+    block = f"{start}\n{body.rstrip()}\n{end}"
+    pattern = re.compile(rf"(?ms)^\s*{re.escape(start)}.*?^\s*{re.escape(end)}\s*")
+    if pattern.search(existing):
+        return pattern.sub(block + "\n", existing, count=1)
+    return existing.rstrip() + "\n\n" + block + "\n"
+
+
+def idle_config(settings: Settings, existing: str = "") -> str:
+    if not existing.strip():
+        existing = """# Hypridle configuration
+$LOCKSCREEN = hyde-shell lockscreen
+
+general {
     lock_cmd = $LOCKSCREEN
     before_sleep_cmd = loginctl lock-session
     ignore_dbus_inhibit = false
     ignore_systemd_inhibit = false
-}}
-
-{listeners}
+}
 """
+    if IDLE_START not in existing:
+        signatures = ("brightnessctl", "loginctl lock-session", "hyprctl dispatch dpms", "systemctl suspend")
+        listener = re.compile(r"(?ms)^\s*listener\s*\{.*?^\s*\}\s*")
+        existing = listener.sub(lambda match: "" if any(item in match.group(0) for item in signatures) else match.group(0), existing)
+    return replace_managed_block(existing, idle_listeners(settings))
 
 
-def sunset_config(settings: Settings) -> str:
+def sunset_config(settings: Settings, existing: str = "") -> str:
     if not settings.night_light_enabled:
-        return "# Managed by HyDE Display Settings.\n# Night light is disabled.\n"
-    return f"""# Managed by HyDE Display Settings.
-profile {{
+        body = "# Night light is disabled."
+    else:
+        body = f"""profile {{
     time = {settings.night_end}
     identity = true
 }}
@@ -128,8 +148,8 @@ profile {{
 profile {{
     time = {settings.night_start}
     temperature = {settings.night_temperature}
-}}
-"""
+}}"""
+    return replace_managed_block(existing, body)
 
 
 def run_quiet(*args: str) -> subprocess.CompletedProcess[str]:
@@ -137,14 +157,37 @@ def run_quiet(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def restart_process(name: str, command: list[str]) -> None:
+    service = run_quiet("systemctl", "--user", "try-restart", f"{name}.service")
+    if service.returncode == 0:
+        return
     run_quiet("pkill", "-x", name)
-    if shutil.which(command[0]):
-        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    if shutil.which(command[0]) and shutil.which("hyprctl"):
+        run_quiet("hyprctl", "dispatch", "exec", " ".join(command))
 
 
 def apply_settings(settings: Settings) -> None:
-    settings.save()
-    atomic_write(HYPRIDLE_CONFIG, idle_config(settings))
-    atomic_write(HYPRSUNSET_CONFIG, sunset_config(settings))
+    idle_existing = HYPRIDLE_CONFIG.read_text() if HYPRIDLE_CONFIG.exists() else ""
+    sunset_existing = HYPRSUNSET_CONFIG.read_text() if HYPRSUNSET_CONFIG.exists() else ""
+    app_existing = APP_CONFIG.read_text() if APP_CONFIG.exists() else ""
+    idle_new = idle_config(settings, idle_existing)
+    sunset_new = sunset_config(settings, sunset_existing)
+    try:
+        atomic_write(HYPRIDLE_CONFIG, idle_new)
+        atomic_write(HYPRSUNSET_CONFIG, sunset_new)
+        settings.save()
+    except OSError:
+        if idle_existing:
+            atomic_write(HYPRIDLE_CONFIG, idle_existing)
+        else:
+            HYPRIDLE_CONFIG.unlink(missing_ok=True)
+        if sunset_existing:
+            atomic_write(HYPRSUNSET_CONFIG, sunset_existing)
+        else:
+            HYPRSUNSET_CONFIG.unlink(missing_ok=True)
+        if app_existing:
+            atomic_write(APP_CONFIG, app_existing)
+        else:
+            APP_CONFIG.unlink(missing_ok=True)
+        raise
     restart_process("hypridle", ["hypridle"])
     restart_process("hyprsunset", ["hyprsunset", "-c", str(HYPRSUNSET_CONFIG)])

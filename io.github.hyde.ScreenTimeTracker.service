@@ -8,6 +8,25 @@ Type=simple
 ExecStart=%h/.local/lib/hyde-display-settings/hyde-screen-time-tracker
 Restart=on-failure
 RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/hyde-display-settings
+LockPersonality=true
+RestrictSUIDSGID=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+CapabilityBoundingSet=
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+RestrictRealtime=true
+ProtectHostname=true
+ProtectControlGroups=true
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=default.target

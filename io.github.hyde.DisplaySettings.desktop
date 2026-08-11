@@ -8,4 +8,4 @@ Type=Application
 Categories=Settings;HardwareSettings;
 Keywords=display;monitor;brightness;night light;idle;screen time;Hyprland;HyDE;
 StartupNotify=true
-StartupWMClass=io.github.hyde.DisplaySettings
+StartupWMClass=io.github.coding_this.HyDEDisplaySettings

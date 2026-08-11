@@ -137,13 +137,6 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         switch = Gtk.Switch(active=enabled, valign=Gtk.Align.CENTER)
         switch.set_tooltip_text(f"Enable {title.lower()}")
         row.add_prefix(switch)
-        row.set_sensitive(enabled)
-
-        def toggled(control: Gtk.Switch, _param: object) -> None:
-            row.set_sensitive(control.get_active())
-            control.set_sensitive(True)
-
-        switch.connect("notify::active", toggled)
         return switch, row
 
     def _screen_time_page(self) -> Adw.PreferencesPage:

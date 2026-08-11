@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import sqlite3
 from datetime import date
@@ -38,7 +39,7 @@ def payload(total: int, apps: list[tuple[str, int]]) -> dict[str, str]:
         tooltip = "Screen time: no activity recorded today\nClick to open Display Settings"
     else:
         lines = [f"Today: {compact_duration(total)}", ""]
-        lines.extend(f"{app}: {compact_duration(seconds)}" for app, seconds in apps)
+        lines.extend(f"{html.escape(app)}: {compact_duration(seconds)}" for app, seconds in apps)
         lines.append("\nClick to open Display Settings")
         tooltip = "\n".join(lines)
     return {"text": text, "tooltip": tooltip, "class": "active" if total else "empty"}

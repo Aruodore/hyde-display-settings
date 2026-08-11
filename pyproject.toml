@@ -13,11 +13,16 @@ keywords = ["hyde", "hyprland", "waybar", "gtk", "display-settings"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: X11 Applications :: GTK",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Topic :: Desktop Environment",
 ]
 
+[project.scripts]
+hyde-display-settings = "app:main"
+hyde-display-settings-waybar = "waybar:main"
+hyde-screen-time-tracker = "tracker:main"
+
 [tool.setuptools]
-py-modules = []
+package-dir = {"" = "src"}
+py-modules = ["app", "settings", "tracker", "waybar", "waybar_integration"]

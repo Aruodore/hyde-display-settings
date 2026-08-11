@@ -23,7 +23,7 @@ On Arch Linux these are available as `python-gobject gtk4 libadwaita hypridle hy
 ./install.sh
 ```
 
-This installs the launcher, desktop entry, and local screen-time service under `~/.local`. Screen-time data never leaves the computer and contains only app class, date, and active seconds.
+This installs the launcher, desktop entry, and local screen-time service under `~/.local`. Tracking is off until the user enables it in the app. Screen-time data never leaves the computer and contains only app class, date, and active seconds. Its state directory and database are private to the owning user.
 
 The Waybar integration follows HyDE's user-module convention:
 
@@ -51,7 +51,7 @@ User settings and screen-time history are intentionally preserved.
 
 ## Configuration safety
 
-Applying idle settings writes `~/.config/hypr/hypridle.conf`. A timestamped copy is saved beside it first. Night-light settings use `~/.config/hypr/hyprsunset.conf` with the same backup behavior.
+Applying settings updates a clearly marked managed block inside `~/.config/hypr/hypridle.conf` and `~/.config/hypr/hyprsunset.conf`. Unrelated custom configuration is preserved. A uniquely timestamped copy is saved beside each file before a change.
 
 ## License
 

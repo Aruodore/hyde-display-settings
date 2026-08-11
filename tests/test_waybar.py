@@ -33,6 +33,11 @@ class WaybarTests(unittest.TestCase):
         self.assertEqual(result["class"], "empty")
         self.assertIn("no activity", result["tooltip"])
 
+    def test_payload_escapes_pango_markup(self) -> None:
+        result = payload(60, [("<b>spoof</b>", 60)])
+        self.assertNotIn("<b>", result["tooltip"])
+        self.assertIn("&lt;b&gt;", result["tooltip"])
+
     def test_add_module_after_backlight(self) -> None:
         patched = add_module(SAMPLE)
         self.assertIn(f'"{MODULE_NAME}"', patched)
@@ -46,6 +51,22 @@ class WaybarTests(unittest.TestCase):
         result = remove_module(add_module(SAMPLE))
         self.assertNotIn(MODULE_NAME, result)
         self.assertIn('"network"', result)
+
+    def test_module_definition_is_not_mistaken_for_layout_item(self) -> None:
+        config = '''{
+  "backlight": { "format": "x" },
+  "modules-right": [
+    "backlight"
+  ]
+}
+'''
+        result = add_module(config)
+        self.assertIn('"backlight": { "format": "x" }', result)
+        self.assertIn(f'"{MODULE_NAME}"', result)
+
+    def test_layout_without_backlight_is_supported(self) -> None:
+        config = '{\n  "modules-right": [\n    "clock"\n  ]\n}\n'
+        self.assertIn(MODULE_NAME, add_module(config))
 
 
 if __name__ == "__main__":
