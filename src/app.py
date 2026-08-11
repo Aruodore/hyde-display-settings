@@ -10,10 +10,23 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from settings import APP_ID, Settings, apply_settings, run_quiet
+from styles import APP_CSS
 from tracker import DB_PATH
+
+def install_styles() -> None:
+    display = Gdk.Display.get_default()
+    if display is None:
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_data(APP_CSS.encode())
+    Gtk.StyleContext.add_provider_for_display(
+        display,
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    )
 
 
 def duration(seconds: int) -> str:
@@ -42,6 +55,7 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         switcher = Adw.ViewSwitcher()
+        switcher.add_css_class("display-tabs")
         switcher.set_stack(self.stack)
         switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
         header.set_title_widget(switcher)
@@ -319,6 +333,7 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
 class DisplaySettingsApp(Adw.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        install_styles()
         self.connect("activate", self._activate)
 
     def _activate(self, _app: Adw.Application) -> None:

@@ -25,4 +25,4 @@ hyde-screen-time-tracker = "tracker:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["app", "settings", "tracker", "waybar", "waybar_integration"]
+py-modules = ["app", "settings", "styles", "tracker", "waybar", "waybar_integration"]
