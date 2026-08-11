@@ -60,9 +60,11 @@ sudo pacman -S --needed python python-gobject gtk4 libadwaita \
 
 ## Install
 
-From a source checkout:
+Clone the repository and run the user-local installer:
 
 ```sh
+git clone https://github.com/Aruodore/hyde-display-settings.git
+cd hyde-display-settings
 ./install.sh
 ```
 
