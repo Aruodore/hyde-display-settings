@@ -10,24 +10,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from controls import stepped_value
 from settings import APP_ID, Settings, apply_settings, run_quiet
-from styles import APP_CSS
 from tracker import DB_PATH
-
-def install_styles() -> None:
-    display = Gdk.Display.get_default()
-    if display is None:
-        return
-    provider = Gtk.CssProvider()
-    provider.load_from_data(APP_CSS.encode())
-    Gtk.StyleContext.add_provider_for_display(
-        display,
-        provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-    )
 
 
 def duration(seconds: int) -> str:
@@ -56,7 +42,6 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         switcher = Adw.ViewSwitcher()
-        switcher.add_css_class("display-tabs")
         switcher.set_stack(self.stack)
         switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
         header.set_title_widget(switcher)
@@ -126,10 +111,10 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
             title="When inactive",
             description="Choose times, then use Save and Apply. Closing without applying discards these changes.",
         )
-        self.dim_switch, self.dim_value, self.dim_row = self._timeout_row("Dim display", "Lower brightness without locking", self.settings.dim_enabled, self.settings.dim_minutes)
-        self.lock_switch, self.lock_value, self.lock_row = self._timeout_row("Lock screen", "Require your password to return", self.settings.lock_enabled, self.settings.lock_minutes)
-        self.off_switch, self.off_value, self.off_row = self._timeout_row("Turn display off", "Blank displays while apps and background work keep running", self.settings.display_off_enabled, self.settings.display_off_minutes)
-        self.suspend_switch, self.suspend_value, self.suspend_row = self._timeout_row("Suspend computer", "Pause the computer and its running processes", self.settings.suspend_enabled, self.settings.suspend_minutes)
+        self.dim_switch, self.dim_row = self._timeout_row("Dim display", "Lower brightness without locking", self.settings.dim_enabled, self.settings.dim_minutes)
+        self.lock_switch, self.lock_row = self._timeout_row("Lock screen", "Require your password to return", self.settings.lock_enabled, self.settings.lock_minutes)
+        self.off_switch, self.off_row = self._timeout_row("Turn display off", "Blank displays while apps and background work keep running", self.settings.display_off_enabled, self.settings.display_off_minutes)
+        self.suspend_switch, self.suspend_row = self._timeout_row("Suspend computer", "Pause the computer and its running processes", self.settings.suspend_enabled, self.settings.suspend_minutes)
         for row in (self.dim_row, self.lock_row, self.off_row, self.suspend_row):
             intro.add(row)
         page.add(intro)
@@ -144,38 +129,15 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         page.add(safety)
         return page
 
-    def _timeout_row(self, title: str, subtitle: str, enabled: bool, minutes: int) -> tuple[Gtk.Switch, Gtk.Adjustment, Adw.ActionRow]:
-        row = Adw.ActionRow(title=title, subtitle=subtitle)
+    def _timeout_row(self, title: str, subtitle: str, enabled: bool, minutes: int) -> tuple[Gtk.Switch, Adw.SpinRow]:
+        row = Adw.SpinRow.new_with_range(1, 240, 1)
+        row.set_title(title)
+        row.set_subtitle(subtitle)
+        row.set_value(minutes)
         switch = Gtk.Switch(active=enabled, valign=Gtk.Align.CENTER)
         switch.set_tooltip_text(f"Enable {title.lower()}")
         row.add_prefix(switch)
-
-        adjustment = Gtk.Adjustment(value=minutes, lower=1, upper=240, step_increment=1)
-        value_label = Gtk.Label(label=f"{minutes} min", width_chars=7, xalign=0.5)
-        value_label.add_css_class("numeric")
-
-        controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        controls.set_valign(Gtk.Align.CENTER)
-        controls.add_css_class("linked")
-        decrease = Gtk.Button(label="−")
-        decrease.set_tooltip_text(f"Reduce {title.lower()} time")
-        decrease.update_property([Gtk.AccessibleProperty.LABEL], [f"Reduce {title.lower()} time"])
-        increase = Gtk.Button(label="+")
-        increase.set_tooltip_text(f"Increase {title.lower()} time")
-        increase.update_property([Gtk.AccessibleProperty.LABEL], [f"Increase {title.lower()} time"])
-
-        def change(_button: Gtk.Button, delta: int) -> None:
-            value = stepped_value(round(adjustment.get_value()), delta)
-            adjustment.set_value(value)
-            value_label.set_label(f"{value} min")
-
-        decrease.connect("clicked", change, -1)
-        increase.connect("clicked", change, 1)
-        controls.append(decrease)
-        controls.append(value_label)
-        controls.append(increase)
-        row.add_suffix(controls)
-        return switch, adjustment, row
+        return switch, row
 
     def _screen_time_page(self) -> Adw.PreferencesPage:
         page = Adw.PreferencesPage()
@@ -291,10 +253,10 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
             self._toast("Use 24-hour times such as 21:00")
             return
         values = [
-            (self.dim_switch, self.dim_value, "dim"),
-            (self.lock_switch, self.lock_value, "lock"),
-            (self.off_switch, self.off_value, "display-off"),
-            (self.suspend_switch, self.suspend_value, "suspend"),
+            (self.dim_switch, self.dim_row, "dim"),
+            (self.lock_switch, self.lock_row, "lock"),
+            (self.off_switch, self.off_row, "display-off"),
+            (self.suspend_switch, self.suspend_row, "suspend"),
         ]
         enabled_times = [(round(row.get_value()), name) for switch, row, name in values if switch.get_active()]
         if enabled_times != sorted(enabled_times):
@@ -304,10 +266,10 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         self.settings.lock_enabled = self.lock_switch.get_active()
         self.settings.display_off_enabled = self.off_switch.get_active()
         self.settings.suspend_enabled = self.suspend_switch.get_active()
-        self.settings.dim_minutes = round(self.dim_value.get_value())
-        self.settings.lock_minutes = round(self.lock_value.get_value())
-        self.settings.display_off_minutes = round(self.off_value.get_value())
-        self.settings.suspend_minutes = round(self.suspend_value.get_value())
+        self.settings.dim_minutes = round(self.dim_row.get_value())
+        self.settings.lock_minutes = round(self.lock_row.get_value())
+        self.settings.display_off_minutes = round(self.off_row.get_value())
+        self.settings.suspend_minutes = round(self.suspend_row.get_value())
         self.settings.night_light_enabled = self.night_enabled.get_active()
         self.settings.night_temperature = round(self.temperature.get_value())
         self.settings.night_start = start
@@ -357,7 +319,6 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
 class DisplaySettingsApp(Adw.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
-        install_styles()
         self.connect("activate", self._activate)
 
     def _activate(self, _app: Adw.Application) -> None:
