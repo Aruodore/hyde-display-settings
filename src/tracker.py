@@ -15,6 +15,29 @@ DB_PATH = STATE_DIR / "screen-time.sqlite3"
 RUNNING = True
 
 
+def hyprland_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    signature = environment.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if signature:
+        return environment
+    runtime = Path(environment.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "hypr"
+    candidates = sorted(
+        (path for path in runtime.iterdir() if (path / ".socket.sock").exists()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    ) if runtime.is_dir() else []
+    if candidates:
+        environment["HYPRLAND_INSTANCE_SIGNATURE"] = candidates[0].name
+    return environment
+
+
+def hyprctl(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["hyprctl", *args], text=True, capture_output=True, timeout=3,
+        check=False, env=hyprland_environment(),
+    )
+
+
 def stop(*_args: object) -> None:
     global RUNNING
     RUNNING = False
@@ -44,7 +67,7 @@ def session_is_active() -> bool:
     state = session.stdout.lower()
     if session.returncode == 0 and ("lockedhint=yes" in state or "idlehint=yes" in state):
         return False
-    monitors = subprocess.run(["hyprctl", "monitors", "-j"], text=True, capture_output=True, timeout=3, check=False)
+    monitors = hyprctl("monitors", "-j")
     if monitors.returncode == 0:
         try:
             values = json.loads(monitors.stdout)
@@ -65,7 +88,7 @@ def session_is_active() -> bool:
 
 
 def active_app() -> str | None:
-    result = subprocess.run(["hyprctl", "activewindow", "-j"], text=True, capture_output=True, timeout=3, check=False)
+    result = hyprctl("activewindow", "-j")
     if result.returncode != 0:
         return None
     try:

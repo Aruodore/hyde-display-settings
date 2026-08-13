@@ -4,6 +4,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from datetime import date
 
 import gi
@@ -13,6 +14,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from settings import APP_ID, Settings, apply_settings, run_quiet
+from analytics import comparison_text, week_analysis
 from tracker import DB_PATH
 
 
@@ -182,17 +184,27 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
 
         self.usage_group = Adw.PreferencesGroup(title="Today")
         page.add(self.usage_group)
+        self.week_group = Adw.PreferencesGroup(title="Weekly analysis")
+        page.add(self.week_group)
+        self.apps_group = Adw.PreferencesGroup(title="Top apps this week")
+        page.add(self.apps_group)
         self._populate_usage()
         return page
 
     def _populate_usage(self) -> None:
         for child in self.usage_rows:
-            self.usage_group.remove(child)
+            parent = child.get_parent()
+            if parent is self.usage_group:
+                self.usage_group.remove(child)
+            elif parent is self.week_group:
+                self.week_group.remove(child)
+            elif parent is self.apps_group:
+                self.apps_group.remove(child)
         self.usage_rows.clear()
         records: list[tuple[str, int]] = []
         if DB_PATH.exists():
             try:
-                with sqlite3.connect(DB_PATH) as connection:
+                with closing(sqlite3.connect(DB_PATH)) as connection:
                     records = connection.execute(
                         "SELECT app, seconds FROM usage WHERE day = ? ORDER BY seconds DESC LIMIT 8",
                         (date.today().isoformat(),),
@@ -202,7 +214,7 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
         total = 0
         if DB_PATH.exists():
             try:
-                with sqlite3.connect(DB_PATH) as connection:
+                with closing(sqlite3.connect(DB_PATH)) as connection:
                     total = connection.execute(
                         "SELECT COALESCE(SUM(seconds), 0) FROM usage WHERE day = ?",
                         (date.today().isoformat(),),
@@ -217,12 +229,42 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
             empty = Adw.ActionRow(title="No activity yet", subtitle="Activity will appear after the tracker has run for a few minutes.")
             self.usage_group.add(empty)
             self.usage_rows.append(empty)
-            return
-        for app, seconds in records:
-            row = Adw.ActionRow(title=app, subtitle=duration(seconds))
-            row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
-            self.usage_group.add(row)
-            self.usage_rows.append(row)
+        else:
+            for app, seconds in records:
+                row = Adw.ActionRow(title=app, subtitle=duration(seconds))
+                row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+                self.usage_group.add(row)
+                self.usage_rows.append(row)
+        analysis = week_analysis(DB_PATH)
+        weekly = Adw.ActionRow(
+            title="This week",
+            subtitle=comparison_text(analysis.change_percent, analysis.last_week),
+        )
+        weekly.add_suffix(Gtk.Label(label=duration(analysis.this_week)))
+        self.week_group.add(weekly)
+        self.usage_rows.append(weekly)
+        average = Adw.ActionRow(title="Daily average", subtitle="Across elapsed days this week")
+        average.add_suffix(Gtk.Label(label=duration(analysis.daily_average)))
+        self.week_group.add(average)
+        self.usage_rows.append(average)
+        previous = Adw.ActionRow(title="Last week")
+        previous.add_suffix(Gtk.Label(label=duration(analysis.last_week)))
+        self.week_group.add(previous)
+        self.usage_rows.append(previous)
+        for day, seconds in reversed(analysis.days):
+            daily = Adw.ActionRow(title=day.strftime("%A"), subtitle=day.strftime("%b %-d"))
+            daily.add_suffix(Gtk.Label(label=duration(seconds)))
+            self.week_group.add(daily)
+            self.usage_rows.append(daily)
+        if analysis.apps:
+            for app, seconds in analysis.apps:
+                app_row = Adw.ActionRow(title=app, subtitle=duration(seconds))
+                self.apps_group.add(app_row)
+                self.usage_rows.append(app_row)
+        else:
+            empty_apps = Adw.ActionRow(title="No activity this week")
+            self.apps_group.add(empty_apps)
+            self.usage_rows.append(empty_apps)
 
     def _refresh_usage(self) -> bool:
         self._populate_usage()
@@ -326,7 +368,7 @@ class DisplaySettingsWindow(Adw.ApplicationWindow):
             return
         if DB_PATH.exists():
             try:
-                with sqlite3.connect(DB_PATH) as connection:
+                with closing(sqlite3.connect(DB_PATH)) as connection:
                     connection.execute("DELETE FROM usage")
                     connection.commit()
             except sqlite3.Error:

@@ -15,6 +15,23 @@ import tracker
 
 
 class TrackerTests(unittest.TestCase):
+    def test_hyprland_environment_discovers_live_socket(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            instance = Path(directory) / "hypr" / "test-signature"
+            instance.mkdir(parents=True)
+            (instance / ".socket.sock").touch()
+            environment = {"XDG_RUNTIME_DIR": directory}
+            with patch.dict(os.environ, environment, clear=True):
+                result = tracker.hyprland_environment()
+            self.assertEqual(result["HYPRLAND_INSTANCE_SIGNATURE"], "test-signature")
+
+    @patch("tracker.subprocess.run")
+    @patch("tracker.hyprland_environment", return_value={"HYPRLAND_INSTANCE_SIGNATURE": "live"})
+    def test_hyprctl_uses_discovered_environment(self, _environment, run) -> None:
+        run.return_value = SimpleNamespace(returncode=0, stdout="{}")
+        tracker.hyprctl("activewindow", "-j")
+        self.assertEqual(run.call_args.kwargs["env"]["HYPRLAND_INSTANCE_SIGNATURE"], "live")
+
     def test_database_is_private(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"

@@ -3,8 +3,10 @@ from __future__ import annotations
 import html
 import json
 import sqlite3
+from contextlib import closing
 from datetime import date
 
+from analytics import comparison_text, week_analysis
 from tracker import DB_PATH
 
 
@@ -20,7 +22,7 @@ def usage_today() -> tuple[int, list[tuple[str, int]]]:
     if not DB_PATH.exists():
         return 0, []
     try:
-        with sqlite3.connect(DB_PATH) as connection:
+        with closing(sqlite3.connect(DB_PATH)) as connection:
             day = date.today().isoformat()
             total = connection.execute(
                 "SELECT COALESCE(SUM(seconds), 0) FROM usage WHERE day = ?", (day,)
@@ -33,12 +35,14 @@ def usage_today() -> tuple[int, list[tuple[str, int]]]:
         return 0, []
 
 
-def payload(total: int, apps: list[tuple[str, int]]) -> dict[str, str]:
+def payload(total: int, apps: list[tuple[str, int]], week_total: int = 0, comparison: str = "") -> dict[str, str]:
     text = "󰍹" if total < 60 else f"󰍹 {compact_duration(total)}"
     if not apps:
         tooltip = "Screen time: no activity recorded today\nClick to open Display Settings"
     else:
-        lines = [f"Today: {compact_duration(total)}", ""]
+        lines = [f"Today: {compact_duration(total)}"]
+        if week_total:
+            lines.extend([f"This week: {compact_duration(week_total)}", comparison, ""])
         lines.extend(f"{html.escape(app)}: {compact_duration(seconds)}" for app, seconds in apps)
         lines.append("\nClick to open Display Settings")
         tooltip = "\n".join(lines)
@@ -47,7 +51,9 @@ def payload(total: int, apps: list[tuple[str, int]]) -> dict[str, str]:
 
 def main() -> int:
     total, apps = usage_today()
-    print(json.dumps(payload(total, apps), ensure_ascii=False))
+    analysis = week_analysis(DB_PATH)
+    comparison = comparison_text(analysis.change_percent, analysis.last_week)
+    print(json.dumps(payload(total, apps, analysis.this_week, comparison), ensure_ascii=False))
     return 0
 
 

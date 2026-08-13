@@ -16,6 +16,7 @@ The project is currently alpha software. Backups are created before managed conf
 - Schedule warmer color temperature with `hyprsunset`
 - Configure ordered dim, lock, display-off, and suspend actions
 - Track active time by application, locally and only after opt-in
+- Compare this week with last week, including daily totals, averages, and top apps
 - Show today's total active time in a clickable Waybar module
 - Follow the active GTK and HyDE theme through libadwaita
 - Preserve unrelated Hyprland configuration using marked managed blocks

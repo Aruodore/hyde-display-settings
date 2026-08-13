@@ -38,6 +38,11 @@ class WaybarTests(unittest.TestCase):
         self.assertNotIn("<b>", result["tooltip"])
         self.assertIn("&lt;b&gt;", result["tooltip"])
 
+    def test_payload_includes_weekly_comparison(self) -> None:
+        result = payload(3600, [("kitty", 3600)], 7200, "25% less than last week")
+        self.assertIn("This week: 2h", result["tooltip"])
+        self.assertIn("25% less than last week", result["tooltip"])
+
     def test_add_module_after_backlight(self) -> None:
         patched = add_module(SAMPLE)
         self.assertIn(f'"{MODULE_NAME}"', patched)
