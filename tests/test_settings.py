@@ -13,6 +13,27 @@ import settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_invalid_settings_shape_falls_back_without_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "settings.json"
+            config.write_text("[]")
+            with patch.object(settings, "APP_CONFIG", config), patch.object(settings, "HYPRIDLE_CONFIG", Path(directory) / "missing"):
+                self.assertEqual(settings.Settings.load(), settings.Settings())
+
+    def test_invalid_field_types_and_ranges_use_safe_defaults(self) -> None:
+        value = settings.Settings.validated({
+            "dim_minutes": "oops",
+            "lock_minutes": -1,
+            "tracking_enabled": "false",
+            "night_temperature": 99_999,
+            "night_start": "bad",
+        })
+        self.assertEqual(value.dim_minutes, 9)
+        self.assertEqual(value.lock_minutes, 10)
+        self.assertFalse(value.tracking_enabled)
+        self.assertEqual(value.night_temperature, 4500)
+        self.assertEqual(value.night_start, "21:00")
+
     def test_tracking_is_opt_in(self) -> None:
         self.assertFalse(settings.Settings().tracking_enabled)
 
@@ -94,6 +115,22 @@ listener {
         self.assertEqual(result.count("timeout = 540"), 1)
         self.assertIn("notify-send custom", result)
         self.assertIn("# keep me", result)
+
+    def test_listener_mentioning_managed_command_in_comment_is_preserved(self) -> None:
+        existing = """listener {
+ timeout = 77
+ on-timeout = notify-send custom # brightnessctl
+}
+"""
+        self.assertIn("notify-send custom", settings.idle_config(settings.Settings(), existing))
+
+    def test_compound_custom_listener_is_preserved(self) -> None:
+        existing = """listener {
+ timeout = 77
+ on-timeout = notify-send before && hyprctl dispatch dpms off
+}
+"""
+        self.assertIn("notify-send before", settings.idle_config(settings.Settings(), existing))
 
     def test_atomic_write_creates_backup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

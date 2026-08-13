@@ -35,12 +35,35 @@ class Settings:
     tracking_enabled: bool = False
 
     @classmethod
+    def validated(cls, raw: object) -> "Settings":
+        defaults = cls()
+        if not isinstance(raw, dict):
+            raise ValueError("settings must be a JSON object")
+        values: dict[str, object] = {}
+        minute_fields = ("dim_minutes", "lock_minutes", "display_off_minutes", "suspend_minutes")
+        boolean_fields = (
+            "dim_enabled", "lock_enabled", "display_off_enabled", "suspend_enabled",
+            "night_light_enabled", "tracking_enabled",
+        )
+        for field in minute_fields:
+            value = raw.get(field, getattr(defaults, field))
+            values[field] = value if type(value) is int and 1 <= value <= 240 else getattr(defaults, field)
+        for field in boolean_fields:
+            value = raw.get(field, getattr(defaults, field))
+            values[field] = value if type(value) is bool else getattr(defaults, field)
+        temperature = raw.get("night_temperature", defaults.night_temperature)
+        values["night_temperature"] = temperature if type(temperature) is int and 2500 <= temperature <= 6500 else defaults.night_temperature
+        for field in ("night_start", "night_end"):
+            value = raw.get(field, getattr(defaults, field))
+            values[field] = value if isinstance(value, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value) else getattr(defaults, field)
+        return cls(**values)
+
+    @classmethod
     def load(cls) -> "Settings":
         try:
             raw = json.loads(APP_CONFIG.read_text())
-            allowed = cls.__dataclass_fields__.keys()
-            return cls(**{key: value for key, value in raw.items() if key in allowed})
-        except (OSError, ValueError, TypeError):
+            return cls.validated(raw)
+        except (OSError, ValueError, TypeError, AttributeError):
             return cls.from_existing_configs()
 
     @classmethod
@@ -49,7 +72,7 @@ class Settings:
         try:
             timeouts = [int(item) for item in re.findall(r"(?m)^\s*timeout\s*=\s*(\d+)", HYPRIDLE_CONFIG.read_text())]
             for field, seconds in zip(("dim_minutes", "lock_minutes", "display_off_minutes", "suspend_minutes"), timeouts):
-                setattr(value, field, max(1, round(seconds / 60)))
+                setattr(value, field, min(240, max(1, round(seconds / 60))))
         except OSError:
             pass
         return value
@@ -130,10 +153,27 @@ general {
 }
 """
     if IDLE_START not in existing:
-        signatures = ("brightnessctl", "loginctl lock-session", "hyprctl dispatch dpms", "systemctl suspend")
         listener = re.compile(r"(?ms)^\s*listener\s*\{.*?^\s*\}\s*")
-        existing = listener.sub(lambda match: "" if any(item in match.group(0) for item in signatures) else match.group(0), existing)
+        existing = listener.sub(lambda match: "" if is_legacy_hyde_listener(match.group(0)) else match.group(0), existing)
     return replace_managed_block(existing, idle_listeners(settings))
+
+
+def is_legacy_hyde_listener(block: str) -> bool:
+    commands: list[tuple[str, str]] = []
+    for key, value in re.findall(r"(?m)^\s*(on-timeout|on-resume)\s*=\s*(.*?)\s*$", block):
+        value = value.split("#", 1)[0].strip().strip("{} ").strip().rstrip(";").strip()
+        commands.append((key, re.sub(r"\s+", " ", value)))
+    known = {
+        ("on-timeout", "brightnessctl -s && brightnessctl s 1%"),
+        ("on-timeout", "brightnessctl -s && brightnessctl set 1%"),
+        ("on-timeout", "brightnessctl set 1%"),
+        ("on-resume", "brightnessctl -r"),
+        ("on-timeout", "loginctl lock-session"),
+        ("on-timeout", "hyprctl dispatch dpms off"),
+        ("on-resume", "hyprctl dispatch dpms on"),
+        ("on-timeout", "systemctl suspend"),
+    }
+    return bool(commands) and all(command in known for command in commands)
 
 
 def sunset_config(settings: Settings, existing: str = "") -> str:
