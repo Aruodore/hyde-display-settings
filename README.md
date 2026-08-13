@@ -9,6 +9,9 @@ HyDE Display Settings brings the controls that are normally spread across Hyprla
 
 The project is currently alpha software. Backups are created before managed configuration is changed, but reviewing those changes before relying on them is recommended.
 
+Releases follow [Semantic Versioning](https://semver.org/). See the
+[changelog](CHANGELOG.md) for upgrade notes and unreleased work.
+
 ## Features
 
 - View connected displays and open `nwg-displays` for visual monitor arrangement
