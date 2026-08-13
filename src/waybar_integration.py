@@ -1,52 +1,165 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 MODULE_NAME = "custom/display-settings"
 
 
-def add_module(config: str) -> str:
-    if f'"{MODULE_NAME}"' in config:
-        return config
-    group_start = config.find('"group/pill#right1"')
-    search_start = group_start if group_start >= 0 else 0
-    key = '"modules"' if group_start >= 0 else '"modules-right"'
-    key_start = config.find(key, search_start)
-    if key_start < 0:
+@dataclass
+class JsonNode:
+    kind: str
+    start: int
+    end: int
+    value: object = None
+    properties: dict[str, "JsonNode"] = field(default_factory=dict)
+    items: list["JsonNode"] = field(default_factory=list)
+
+
+def jsonc_tokens(config: str) -> list[tuple[str, object, int, int]]:
+    tokens: list[tuple[str, object, int, int]] = []
+    index = 0
+    while index < len(config):
+        if config[index].isspace():
+            index += 1
+        elif config.startswith("//", index):
+            newline = config.find("\n", index + 2)
+            index = len(config) if newline < 0 else newline + 1
+        elif config.startswith("/*", index):
+            end = config.find("*/", index + 2)
+            if end < 0:
+                raise ValueError("Unterminated JSONC comment")
+            index = end + 2
+        elif config[index] == '"':
+            start = index
+            index += 1
+            while index < len(config):
+                if config[index] == "\\":
+                    index += 2
+                elif config[index] == '"':
+                    index += 1
+                    break
+                else:
+                    index += 1
+            else:
+                raise ValueError("Unterminated JSONC string")
+            tokens.append(("string", json.loads(config[start:index]), start, index))
+        elif config[index] in "{}[]:,":
+            tokens.append((config[index], config[index], index, index + 1))
+            index += 1
+        else:
+            start = index
+            while index < len(config) and not config[index].isspace() and config[index] not in "{}[]:,":
+                index += 1
+            tokens.append(("literal", config[start:index], start, index))
+    return tokens
+
+
+def parse_jsonc(config: str) -> tuple[JsonNode, list[tuple[str, object, int, int]]]:
+    tokens = jsonc_tokens(config)
+
+    def parse(position: int) -> tuple[JsonNode, int]:
+        if position >= len(tokens):
+            raise ValueError("Unexpected end of JSONC")
+        kind, value, start, end = tokens[position]
+        if kind == "{":
+            node = JsonNode("object", start, end)
+            position += 1
+            while position < len(tokens) and tokens[position][0] != "}":
+                if tokens[position][0] == ",":
+                    position += 1
+                    continue
+                if tokens[position][0] != "string" or position + 1 >= len(tokens) or tokens[position + 1][0] != ":":
+                    raise ValueError("Malformed JSONC object")
+                key = str(tokens[position][1])
+                child, position = parse(position + 2)
+                node.properties[key] = child
+            if position >= len(tokens):
+                raise ValueError("Unterminated JSONC object")
+            node.end = tokens[position][3]
+            return node, position + 1
+        if kind == "[":
+            node = JsonNode("array", start, end)
+            position += 1
+            while position < len(tokens) and tokens[position][0] != "]":
+                if tokens[position][0] == ",":
+                    position += 1
+                    continue
+                child, position = parse(position)
+                node.items.append(child)
+            if position >= len(tokens):
+                raise ValueError("Unterminated JSONC array")
+            node.end = tokens[position][3]
+            return node, position + 1
+        return JsonNode(kind, start, end, value=value), position + 1
+
+    root, position = parse(0)
+    if position != len(tokens):
+        raise ValueError("Unexpected content after JSONC document")
+    return root, tokens
+
+
+def module_array(config: str) -> tuple[JsonNode, list[tuple[str, object, int, int]]]:
+    root, tokens = parse_jsonc(config)
+    if root.kind != "object":
+        raise ValueError("Waybar config must be an object")
+    group = root.properties.get("group/pill#right1")
+    target = group.properties.get("modules") if group and group.kind == "object" else root.properties.get("modules-right")
+    if not target or target.kind != "array":
         raise ValueError("Could not find a suitable modules group in the Waybar layout")
-    array_start = config.find("[", key_start)
-    array_end = config.find("]", array_start)
-    if array_start < 0 or array_end < 0:
-        raise ValueError("Waybar module array is malformed")
-    body = config[array_start + 1:array_end]
-    item = re.search(r'(?m)^(\s*)"backlight"\s*,?', body)
-    indent_match = re.search(r"\n(\s*)\S", body)
-    indent = item.group(1) if item else (indent_match.group(1) if indent_match else "        ")
-    if item:
-        line_end = body.find("\n", item.end())
-        line_end = len(body) if line_end < 0 else line_end
-        existing = body[item.start():line_end].rstrip()
-        if not existing.endswith(","):
-            existing += ","
-        body = body[:item.start()] + existing + f'\n{indent}"{MODULE_NAME}",' + body[line_end:]
+    return target, tokens
+
+
+def add_module(config: str) -> str:
+    target, tokens = module_array(config)
+    if any(item.kind == "string" and item.value == MODULE_NAME for item in target.items):
+        return config
+    close = target.end - 1
+    if target.items:
+        last = target.items[-1]
+        line_start = config.rfind("\n", 0, last.start) + 1
+        candidate_indent = config[line_start:last.start]
+        indent = candidate_indent if not candidate_indent.strip() else "    "
+        trailing_comma = any(kind == "," and start >= last.end and end <= close for kind, _value, start, end in tokens)
+        prefix = "" if trailing_comma else ","
+        insertion = f'{prefix}\n{indent}"{MODULE_NAME}"'
     else:
-        stripped = body.rstrip()
-        if stripped and not stripped.endswith(","):
-            stripped += ","
-        body = stripped + f'\n{indent}"{MODULE_NAME}"\n'
-    return config[:array_start + 1] + body + config[array_end:]
+        line_start = config.rfind("\n", 0, target.start) + 1
+        indent = config[line_start:target.start] + "    "
+        insertion = f'\n{indent}"{MODULE_NAME}"\n{config[line_start:target.start]}'
+    return config[:close] + insertion + config[close:]
 
 
 def remove_module(config: str) -> str:
-    pattern = rf'(?m)^\s*"{re.escape(MODULE_NAME)}"\s*,?\s*\n?'
-    return re.sub(pattern, "", config)
+    target, tokens = module_array(config)
+    for index, item in enumerate(target.items):
+        if item.kind != "string" or item.value != MODULE_NAME:
+            continue
+        following_comma = next(
+            (token for token in tokens if token[0] == "," and item.end <= token[2] < target.end),
+            None,
+        )
+        if following_comma:
+            return config[:item.start] + config[following_comma[3]:]
+        previous_end = target.items[index - 1].end if index else target.start + 1
+        preceding_comma = next(
+            (token for token in reversed(tokens) if token[0] == "," and previous_end <= token[2] < item.start),
+            None,
+        )
+        if preceding_comma:
+            between = config[preceding_comma[3]:item.start]
+            if "//" in between or "/*" in between:
+                return config[:item.start] + config[item.end:]
+            return config[:preceding_comma[2]] + config[item.end:]
+        return config[:item.start] + config[item.end:]
+    return config
 
 
 def write_with_backup(path: Path, content: str) -> None:

@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from waybar import compact_duration, payload
-from waybar_integration import MODULE_NAME, add_module, remove_module
+from waybar_integration import MODULE_NAME, add_module, parse_jsonc, remove_module
 
 
 SAMPLE = '''{
@@ -72,6 +72,32 @@ class WaybarTests(unittest.TestCase):
     def test_layout_without_backlight_is_supported(self) -> None:
         config = '{\n  "modules-right": [\n    "clock"\n  ]\n}\n'
         self.assertIn(MODULE_NAME, add_module(config))
+
+    def test_nested_array_is_not_selected_as_module_target(self) -> None:
+        config = '{"modules-right":[{"nested":["one","two"]},"clock"]}'
+        result = add_module(config)
+        self.assertIn('["one","two"]', result)
+        self.assertGreater(result.index(MODULE_NAME), result.index('"clock"'))
+
+    def test_module_definition_does_not_count_as_layout_membership(self) -> None:
+        config = '{"custom/display-settings":{"exec":"x"},"modules-right":["clock"]}'
+        result = add_module(config)
+        self.assertEqual(result.count(MODULE_NAME), 2)
+        parse_jsonc(result)
+
+    def test_comments_and_trailing_commas_survive_round_trip(self) -> None:
+        config = '''{
+  // user layout
+  "modules-right": [
+    "clock", // keep this comment
+  ],
+}
+'''
+        result = remove_module(add_module(config))
+        parse_jsonc(result)
+        self.assertIn("// user layout", result)
+        self.assertIn("// keep this comment", result)
+        self.assertIn('"clock"', result)
 
 
 if __name__ == "__main__":
