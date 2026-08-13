@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hyde-display-settings"
-version = "0.1.0"
+version = "0.2.0.dev0"
 description = "Native display, idle, night-light, and screen-time settings for HyDE and Hyprland"
 readme = "README.md"
 requires-python = ">=3.11"
