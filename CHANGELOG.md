@@ -11,6 +11,21 @@ still being established.
 ### Fixed
 
 - Screen Time rows no longer duplicate on each 30-second refresh.
+- Waybar installation now edits the selected JSONC module array structurally and preserves nested arrays, comments, and trailing commas.
+- Custom `hypridle` listeners that mention managed commands are no longer removed during migration.
+- Invalid settings values now fall back to safe defaults instead of crashing or generating invalid timeouts.
+- Screen-time tracking now discovers the graphical logind session and fails closed when session state cannot be verified.
+- Tracker and database failures are shown as unavailable instead of being silently presented as zero activity.
+- Current-week change now compares against the same number of elapsed weekdays in the previous week.
+- Applying settings verifies daemon startup and restores the previous configuration if startup fails.
+- Brightness slider changes are debounced and launched asynchronously to keep the interface responsive.
+
+### Changed
+
+- Analytics uses one short-timeout database snapshot per refresh.
+- Managed configuration and Waybar backups retain the ten newest copies per file.
+- Installation validates runtime dependencies, stages app files before replacement, and restores the prior app directory after a failed update.
+- The tracker service supports the systemd user manager's configured state directory.
 
 ### Planned
 

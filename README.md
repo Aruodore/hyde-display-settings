@@ -19,7 +19,7 @@ Releases follow [Semantic Versioning](https://semver.org/). See the
 - Schedule warmer color temperature with `hyprsunset`
 - Configure ordered dim, lock, display-off, and suspend actions
 - Track active time by application, locally and only after opt-in
-- Compare this week with last week, including daily totals, averages, and top apps
+- Compare this week with the same elapsed days last week, including daily totals, averages, and top apps
 - Show today's total active time in a clickable Waybar module
 - Follow the active GTK and HyDE theme through libadwaita
 - Preserve unrelated Hyprland configuration using marked managed blocks
@@ -47,7 +47,7 @@ It does not store window titles, keyboard input, screenshots, file names, browsi
 
 State is stored in `~/.local/state/hyde-display-settings/` with owner-only permissions. The app can erase all recorded history from its Screen Time page.
 
-Applying settings updates only blocks marked `BEGIN HYDE DISPLAY SETTINGS` and `END HYDE DISPLAY SETTINGS` in the Hyprland configuration. Existing files receive uniquely timestamped backup copies before each change.
+Applying settings updates only blocks marked `BEGIN HYDE DISPLAY SETTINGS` and `END HYDE DISPLAY SETTINGS` in the Hyprland configuration. Existing files receive uniquely timestamped backup copies before each change; the ten newest backups per managed file are retained.
 
 ## Requirements
 
@@ -82,7 +82,7 @@ After installation, open **Display Settings** from the application launcher, cli
 hyde-display-settings
 ```
 
-Use **Apply** to save idle and night-light settings. Brightness changes are immediate. The monitor-layout row launches `nwg-displays`, which owns and applies monitor layout configuration.
+Use **Save & Apply** to save idle and night-light settings. Brightness changes are immediate. The monitor-layout row launches `nwg-displays`, which owns and applies monitor layout configuration.
 
 ## Files and configuration
 
@@ -94,6 +94,7 @@ Use **Apply** to save idle and night-light settings. Brightness changes are imme
 | `~/.config/waybar/modules/custom-display-settings.jsonc` | User Waybar module definition |
 | `~/.config/waybar/layouts/display-settings.jsonc` | Persistent HyDE Waybar layout |
 | `~/.local/state/hyde-display-settings/screen-time.sqlite3` | Private local usage history |
+| `~/.local/state/hyde-display-settings/tracker-health.json` | Tracker status and last successful heartbeat |
 
 ## Update
 

@@ -99,6 +99,10 @@ class WaybarTests(unittest.TestCase):
         self.assertIn("// keep this comment", result)
         self.assertIn('"clock"', result)
 
+    def test_malformed_layout_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            add_module('{"modules-right":["clock" "network"]}')
+
 
 if __name__ == "__main__":
     unittest.main()

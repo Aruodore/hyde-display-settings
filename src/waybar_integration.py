@@ -73,14 +73,15 @@ def parse_jsonc(config: str) -> tuple[JsonNode, list[tuple[str, object, int, int
             node = JsonNode("object", start, end)
             position += 1
             while position < len(tokens) and tokens[position][0] != "}":
-                if tokens[position][0] == ",":
-                    position += 1
-                    continue
                 if tokens[position][0] != "string" or position + 1 >= len(tokens) or tokens[position + 1][0] != ":":
                     raise ValueError("Malformed JSONC object")
                 key = str(tokens[position][1])
                 child, position = parse(position + 2)
                 node.properties[key] = child
+                if position < len(tokens) and tokens[position][0] == ",":
+                    position += 1
+                elif position < len(tokens) and tokens[position][0] != "}":
+                    raise ValueError("Missing comma in JSONC object")
             if position >= len(tokens):
                 raise ValueError("Unterminated JSONC object")
             node.end = tokens[position][3]
@@ -89,15 +90,21 @@ def parse_jsonc(config: str) -> tuple[JsonNode, list[tuple[str, object, int, int
             node = JsonNode("array", start, end)
             position += 1
             while position < len(tokens) and tokens[position][0] != "]":
-                if tokens[position][0] == ",":
-                    position += 1
-                    continue
                 child, position = parse(position)
                 node.items.append(child)
+                if position < len(tokens) and tokens[position][0] == ",":
+                    position += 1
+                elif position < len(tokens) and tokens[position][0] != "]":
+                    raise ValueError("Missing comma in JSONC array")
             if position >= len(tokens):
                 raise ValueError("Unterminated JSONC array")
             node.end = tokens[position][3]
             return node, position + 1
+        if kind == "literal":
+            try:
+                value = json.loads(str(value))
+            except ValueError as error:
+                raise ValueError("Invalid JSONC literal") from error
         return JsonNode(kind, start, end, value=value), position + 1
 
     root, position = parse(0)
@@ -111,7 +118,8 @@ def module_array(config: str) -> tuple[JsonNode, list[tuple[str, object, int, in
     if root.kind != "object":
         raise ValueError("Waybar config must be an object")
     group = root.properties.get("group/pill#right1")
-    target = group.properties.get("modules") if group and group.kind == "object" else root.properties.get("modules-right")
+    target = group.properties.get("modules") if group and group.kind == "object" else None
+    target = target or root.properties.get("modules-right")
     if not target or target.kind != "array":
         raise ValueError("Could not find a suitable modules group in the Waybar layout")
     return target, tokens
@@ -177,6 +185,9 @@ def write_with_backup(path: Path, content: str) -> None:
     except Exception:
         Path(temporary).unlink(missing_ok=True)
         raise
+    backups = sorted(path.parent.glob(f"{path.name}.backup-*"), key=lambda item: item.name, reverse=True)
+    for old_backup in backups[10:]:
+        old_backup.unlink(missing_ok=True)
 
 
 def regenerate_waybar() -> None:

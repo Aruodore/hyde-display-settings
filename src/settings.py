@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,10 @@ STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
 APP_CONFIG = CONFIG_DIR / "hyde-display-settings/settings.json"
 HYPRIDLE_CONFIG = CONFIG_DIR / "hypr/hypridle.conf"
 HYPRSUNSET_CONFIG = CONFIG_DIR / "hypr/hyprsunset.conf"
+
+
+class SettingsApplyError(RuntimeError):
+    pass
 
 
 @dataclass
@@ -98,6 +103,9 @@ def atomic_write(path: Path, content: str) -> None:
     except Exception:
         Path(temp_name).unlink(missing_ok=True)
         raise
+    backups = sorted(path.parent.glob(f"{path.name}.backup-*"), key=lambda item: item.name, reverse=True)
+    for old_backup in backups[10:]:
+        old_backup.unlink(missing_ok=True)
 
 
 def idle_listeners(settings: Settings) -> str:
@@ -196,19 +204,37 @@ def run_quiet(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, text=True, capture_output=True, check=False)
 
 
-def restart_process(name: str, command: list[str]) -> None:
+def restart_process(name: str, command: list[str]) -> bool:
     # HyDE normally launches these helpers directly rather than through their
     # optional systemd units. Stop that unmanaged process before asking
     # systemd to start a fresh instance with the newly written configuration.
     run_quiet("pkill", "-x", name)
     service = run_quiet("systemctl", "--user", "restart", f"{name}.service")
-    if service.returncode == 0:
-        return
+    if service.returncode == 0 and run_quiet("systemctl", "--user", "is-active", "--quiet", f"{name}.service").returncode == 0:
+        return True
     if shutil.which(command[0]) and shutil.which("hyprctl"):
-        run_quiet("hyprctl", "dispatch", "exec", " ".join(command))
+        launched = run_quiet("hyprctl", "dispatch", "exec", " ".join(command))
+        if launched.returncode == 0:
+            for attempt in range(3):
+                if run_quiet("pgrep", "-x", name).returncode == 0:
+                    return True
+                if attempt < 2:
+                    time.sleep(0.1)
+    return False
+
+
+def restore_file(path: Path, previous: str, existed: bool) -> None:
+    if existed:
+        atomic_write(path, previous)
+    else:
+        path.unlink(missing_ok=True)
 
 
 def apply_settings(settings: Settings) -> None:
+    settings = Settings.validated(asdict(settings))
+    idle_existed = HYPRIDLE_CONFIG.exists()
+    sunset_existed = HYPRSUNSET_CONFIG.exists()
+    app_existed = APP_CONFIG.exists()
     idle_existing = HYPRIDLE_CONFIG.read_text() if HYPRIDLE_CONFIG.exists() else ""
     sunset_existing = HYPRSUNSET_CONFIG.read_text() if HYPRSUNSET_CONFIG.exists() else ""
     app_existing = APP_CONFIG.read_text() if APP_CONFIG.exists() else ""
@@ -219,18 +245,18 @@ def apply_settings(settings: Settings) -> None:
         atomic_write(HYPRSUNSET_CONFIG, sunset_new)
         settings.save()
     except OSError:
-        if idle_existing:
-            atomic_write(HYPRIDLE_CONFIG, idle_existing)
-        else:
-            HYPRIDLE_CONFIG.unlink(missing_ok=True)
-        if sunset_existing:
-            atomic_write(HYPRSUNSET_CONFIG, sunset_existing)
-        else:
-            HYPRSUNSET_CONFIG.unlink(missing_ok=True)
-        if app_existing:
-            atomic_write(APP_CONFIG, app_existing)
-        else:
-            APP_CONFIG.unlink(missing_ok=True)
+        restore_file(HYPRIDLE_CONFIG, idle_existing, idle_existed)
+        restore_file(HYPRSUNSET_CONFIG, sunset_existing, sunset_existed)
+        restore_file(APP_CONFIG, app_existing, app_existed)
         raise
+    idle_started = restart_process("hypridle", ["hypridle"])
+    sunset_started = restart_process("hyprsunset", ["hyprsunset", "-c", str(HYPRSUNSET_CONFIG)])
+    if idle_started and sunset_started:
+        return
+    restore_file(HYPRIDLE_CONFIG, idle_existing, idle_existed)
+    restore_file(HYPRSUNSET_CONFIG, sunset_existing, sunset_existed)
+    restore_file(APP_CONFIG, app_existing, app_existed)
     restart_process("hypridle", ["hypridle"])
     restart_process("hyprsunset", ["hyprsunset", "-c", str(HYPRSUNSET_CONFIG)])
+    failed = ", ".join(name for name, started in (("hypridle", idle_started), ("hyprsunset", sunset_started)) if not started)
+    raise SettingsApplyError(f"Could not start {failed}; previous settings were restored")

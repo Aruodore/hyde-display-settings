@@ -48,6 +48,7 @@ class SettingsTests(unittest.TestCase):
             [
                 ("pkill", "-x", "hypridle"),
                 ("systemctl", "--user", "restart", "hypridle.service"),
+                ("systemctl", "--user", "is-active", "--quiet", "hypridle.service"),
             ],
         )
 
@@ -58,14 +59,13 @@ class SettingsTests(unittest.TestCase):
             subprocess.CompletedProcess([], 0, "", ""),
             subprocess.CompletedProcess([], 1, "", "failed"),
             subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 0, "", ""),
         ]
 
-        settings.restart_process("hypridle", ["hypridle"])
+        self.assertTrue(settings.restart_process("hypridle", ["hypridle"]))
 
-        self.assertEqual(
-            run_quiet.call_args_list[-1].args,
-            ("hyprctl", "dispatch", "exec", "hypridle"),
-        )
+        self.assertEqual(run_quiet.call_args_list[-2].args, ("hyprctl", "dispatch", "exec", "hypridle"))
+        self.assertEqual(run_quiet.call_args_list[-1].args, ("pgrep", "-x", "hypridle"))
 
     def test_idle_config_contains_default_sequence(self) -> None:
         config = settings.idle_config(settings.Settings())
@@ -142,6 +142,14 @@ listener {
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_text(), "old")
 
+    def test_atomic_write_retains_only_ten_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config"
+            target.write_text("start")
+            for index in range(12):
+                settings.atomic_write(target, str(index))
+            self.assertEqual(len(list(target.parent.glob("config.backup-*"))), 10)
+
     def test_apply_rolls_back_when_settings_save_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -159,6 +167,27 @@ listener {
                 patch.object(settings, "restart_process"),
             ):
                 with self.assertRaises(OSError):
+                    settings.apply_settings(settings.Settings())
+            self.assertEqual(idle.read_text(), "idle original\n")
+            self.assertEqual(sunset.read_text(), "sunset original\n")
+            self.assertEqual(app_config.read_text(), "{}\n")
+
+    def test_apply_rolls_back_when_daemon_does_not_start(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            idle = root / "hypridle.conf"
+            sunset = root / "hyprsunset.conf"
+            app_config = root / "settings.json"
+            idle.write_text("idle original\n")
+            sunset.write_text("sunset original\n")
+            app_config.write_text("{}\n")
+            with (
+                patch.object(settings, "HYPRIDLE_CONFIG", idle),
+                patch.object(settings, "HYPRSUNSET_CONFIG", sunset),
+                patch.object(settings, "APP_CONFIG", app_config),
+                patch.object(settings, "restart_process", side_effect=[False, True, True, True]),
+            ):
+                with self.assertRaises(settings.SettingsApplyError):
                     settings.apply_settings(settings.Settings())
             self.assertEqual(idle.read_text(), "idle original\n")
             self.assertEqual(sunset.read_text(), "sunset original\n")
