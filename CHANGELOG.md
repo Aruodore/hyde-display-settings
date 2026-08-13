@@ -8,6 +8,10 @@ still being established.
 
 ## [Unreleased]
 
+### Fixed
+
+- Screen Time rows no longer duplicate on each 30-second refresh.
+
 ### Planned
 
 - Day and Week screen-time reports with period navigation
